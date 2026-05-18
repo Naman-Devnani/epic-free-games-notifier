@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { buildBundledCheckoutUrl } from './epic.ts';
 import type { FreeGame } from './epic.ts';
 
 export interface EmailConfig {
@@ -33,6 +34,12 @@ export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise
 }
 
 function renderHtml(games: FreeGame[]): string {
+  const claimAllBanner = games.length > 1
+    ? `<div style="margin:0 0 24px 0;padding:16px;background:#0078f2;border-radius:10px;text-align:center">
+         <p style="margin:0 0 10px 0;color:#fff;font-size:14px">Claim every game above in one go:</p>
+         <a href="${escapeHtml(buildBundledCheckoutUrl(games))}" style="display:inline-block;padding:11px 24px;background:#fff;color:#0078f2;text-decoration:none;border-radius:6px;font-weight:700;font-size:14px">Claim all ${games.length}</a>
+       </div>`
+    : '';
   const cards = games
     .map((g) => {
       const endsOn = new Date(g.endDate).toLocaleString('en-US', {
@@ -59,6 +66,7 @@ function renderHtml(games: FreeGame[]): string {
 <html><body style="margin:0;padding:24px;background:#f6f7f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <div style="max-width:640px;margin:0 auto">
   <h1 style="margin:0 0 20px 0;font-size:24px;color:#0f1923">This week's free games</h1>
+  ${claimAllBanner}
   ${cards}
   <p style="margin-top:24px;color:#8a8f95;font-size:12px;text-align:center">
     Sent automatically. Click "Claim now" then press "Place Order" on Epic - the games are free.
