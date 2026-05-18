@@ -98,11 +98,22 @@ function getCurrentFreeOffer(el: RawElement, now: Date) {
 }
 
 function buildCheckoutUrl(offerId: string, namespace: string): string {
+  return wrapWithLogin(`&offers=1-${namespace}-${offerId}`);
+}
+
+/** Build one checkout URL that pre-fills *all* offers, so a single "Place Order" claims them at once. */
+export function buildBundledCheckoutUrl(
+  offers: Array<{ id: string; namespace: string }>,
+): string {
+  const params = offers.map((o) => `&offers=1-${o.namespace}-${o.id}`).join('');
+  return wrapWithLogin(params);
+}
+
+function wrapWithLogin(offersParams: string): string {
   const checkout =
     `https://www.epicgames.com/store/purchase?highlightColor=0078f2` +
-    `&offers=1-${namespace}-${offerId}` +
+    offersParams +
     `&orderId&purchaseToken&showNavigation=true`;
-
   const login = new URL('https://www.epicgames.com/id/login');
   login.searchParams.set('noHostRedirect', 'true');
   login.searchParams.set('redirectUrl', checkout);
