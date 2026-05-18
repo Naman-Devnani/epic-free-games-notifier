@@ -1,0 +1,67 @@
+name: Notify Epic Free Games
+
+on:
+  schedule:
+    - cron: '0 18 * * 4'   # Thursday 18:00 UTC - one hour after Epic's weekly drop
+    - cron: '0 10 * * 5'   # Friday 10:00 UTC - backup
+    - cron: '0 10 * * 1'   # Monday 10:00 UTC - safety net
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit state file
+  actions: write    # to delete old workflow runs
+
+concurrency:
+  group: notify-epic
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Send notification if there are new free games
+        env:
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: '587'
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO:  ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM_NAME: Epic Free Games Bot
+        run: npm start
+
+      - name: Commit updated state
+        run: |
+          if [ -n "$(git status --porcelain state/notified.json 2>/dev/null)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state/notified.json
+            git commit -m "chore: update notified games state [skip ci]"
+            git push
+          else
+            echo "No state changes to commit"
+          fi
+
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: notify
+    if: always()
+    permissions:
+      actions: write
+    steps:
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 30
+          keep_minimum_runs: 4
