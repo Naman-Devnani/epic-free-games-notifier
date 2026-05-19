@@ -11,6 +11,9 @@ export interface EmailConfig {
   fromName?: string;
 }
 
+// Gmail truncates the inbox preview around 70 chars. Leave headroom for the prefix.
+const MAX_SUBJECT_TITLES_LENGTH = 55;
+
 export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise<void> {
   const transport = nodemailer.createTransport({
     host: config.host,
@@ -19,17 +22,25 @@ export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise
     auth: { user: config.user, pass: config.pass },
   });
 
-  // Subject lists the titles so you can decide from the inbox without opening the mail.
-  const titles = games.map((g) => g.title).join(', ');
-  const subject = `Free on Epic: ${titles}`;
-
   await transport.sendMail({
     from: `"${config.fromName ?? 'Epic Free Games Bot'}" <${config.user}>`,
     to: config.to,
-    subject,
+    subject: buildSubject(games),
     html: renderHtml(games),
     text: renderText(games),
   });
+}
+
+function buildSubject(games: FreeGame[]): string {
+  const titles = games.map((g) => g.title);
+  const joined = titles.join(', ');
+  if (joined.length <= MAX_SUBJECT_TITLES_LENGTH) {
+    return `Free on Epic: ${joined}`;
+  }
+  // Long titles fall back to "first + N more" so the most important game still shows.
+  const extra = titles.length - 1;
+  const first = titles[0];
+  return extra > 0 ? `Free on Epic: ${first} + ${extra} more` : `Free on Epic: ${first}`;
 }
 
 function renderHtml(games: FreeGame[]): string {
