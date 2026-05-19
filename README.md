@@ -4,14 +4,14 @@
 
 Tiny GitHub Actions workflow that emails you whenever the Epic Games Store has a new free game.
 
-The email contains a pre-filled "Claim now" button for each game and, when there are 2+ games, a single "Claim all N" button at the top that loads every game into one checkout in one click. You finish by pressing Place Order on Epic — the games are free, no payment screen. Human stays in the loop, nothing automates Epic's checkout.
+The email contains a pre-filled "Claim now" button for each game and, when there are 2+ games, a single "Claim all N" button at the top that loads every game into one checkout in one click. You finish by pressing Place Order on Epic. The games are free, so no payment screen. Human stays in the loop, nothing automates Epic's checkout.
 
 ## How it works
 
 1. **Cron** triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** (05:30 UTC). Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails.
-2. The job hits Epic's public `freeGamesPromotions` API — the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10 s timeout and retry up to 3 times on transient errors (4xx and parse errors fail fast).
+2. The job hits Epic's public `freeGamesPromotions` API, the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10 s timeout and retry up to 3 times on transient errors (4xx and parse errors fail fast).
 3. Game IDs are diffed against `state/notified.json` (committed to the repo) so the same email never goes out twice.
-4. If anything is new, one HTML email is sent — each game gets its own card (artwork, description, expiry, "Claim now" button) and a "Claim all N" banner appears at the top when 2+ games are bundled.
+4. If anything is new, one HTML email is sent. Each game gets its own card (artwork, description, expiry, "Claim now" button) and a "Claim all N" banner appears at the top when 2+ games are bundled.
 5. If the workflow fails (Epic API down, SMTP rejected, state file corrupted), a separate failure-notification email is sent so you don't silently miss free games.
 6. A second job, **cleanup**, runs after each notify job and deletes old workflow runs (keeps the 2 most recent, anything older than 1 day gets pruned) so the Actions tab stays tidy.
 
@@ -40,17 +40,17 @@ SMTP_PORT: '465'   # 465 enables TLS, 587 uses STARTTLS
 
 ## Manual operations
 
-**Dry run** — verify the code without sending an email or changing state. Actions tab → "Notify Epic Free Games" → "Run workflow" → set `dry_run` to `true`. Logs will show what *would* have been sent.
+**Dry run.** Verify the code without sending an email or changing state. Actions tab → "Notify Epic Free Games" → "Run workflow" → set `dry_run` to `true`. Logs will show what *would* have been sent.
 
-**Type-check locally** — requires Node 22+. From the repo root:
+**Type-check locally.** Requires Node 22+. From the repo root:
 ```sh
 npm install        # one-time
 npm run typecheck  # runs tsc --noEmit, no build artifacts produced
 ```
 
-**Reset notification state** — edit `state/notified.json` directly in the repo (commit the change). Setting it to `[]` will re-notify about every currently free game on the next run.
+**Reset notification state.** Edit `state/notified.json` directly in the repo (commit the change). Setting it to `[]` will re-notify about every currently free game on the next run.
 
-**Pause notifications** — Settings → Actions → General → Disable Actions for this repository. Or open the "Notify Epic Free Games" workflow page and click "Disable workflow". Re-enable any time. Deleting one of the secrets also stops it (the run goes red and the failure email fires once, then nothing until you restore the secret).
+**Pause notifications.** Settings → Actions → General → Disable Actions for this repository. Or open the "Notify Epic Free Games" workflow page and click "Disable workflow". Re-enable any time. Deleting one of the secrets also stops it (the run goes red and the failure email fires once, then nothing until you restore the secret).
 
 ## Files
 
