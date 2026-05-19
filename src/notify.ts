@@ -19,13 +19,12 @@ export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise
     auth: { user: config.user, pass: config.pass },
   });
 
-  const subject =
-    games.length === 1
-      ? `Free on Epic: ${games[0].title}`
-      : `${games.length} free games on Epic this week`;
+  // Subject lists the titles so you can decide from the inbox without opening the mail.
+  const titles = games.map((g) => g.title).join(', ');
+  const subject = `Free on Epic: ${titles}`;
 
   await transport.sendMail({
-    from: `"${config.fromName ?? 'Epic Free Games'}" <${config.user}>`,
+    from: `"${config.fromName ?? 'Epic Free Games Bot'}" <${config.user}>`,
     to: config.to,
     subject,
     html: renderHtml(games),
@@ -76,9 +75,13 @@ function renderHtml(games: FreeGame[]): string {
 }
 
 function renderText(games: FreeGame[]): string {
-  return games
+  const bundled = games.length > 1
+    ? `Claim all ${games.length} in one go: ${buildBundledCheckoutUrl(games)}\n\n---\n\n`
+    : '';
+  const perGame = games
     .map((g) => `${g.title}\n${g.description}\nFree until ${g.endDate}\nClaim: ${g.checkoutUrl}`)
     .join('\n\n---\n\n');
+  return bundled + perGame;
 }
 
 function escapeHtml(s: string): string {
