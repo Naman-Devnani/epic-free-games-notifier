@@ -1,8 +1,14 @@
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getFreeGames } from './epic.ts';
 import { loadNotifiedIds, saveNotifiedIds } from './state.ts';
 import { sendEmail } from './notify.ts';
 
-const STATE_FILE = 'state/notified.json';
+// Anchor the state path to the repo root (one level above src/) so the script
+// works from any cwd - not just when invoked from the repo root.
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const STATE_FILE = resolve(PROJECT_ROOT, 'state', 'notified.json');
+
 const DRY_RUN = process.env.DRY_RUN === '1' || process.env.DRY_RUN?.toLowerCase() === 'true';
 
 function required(name: string): string {
