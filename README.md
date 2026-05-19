@@ -2,30 +2,17 @@
 
 Tiny GitHub Actions workflow that emails me whenever the Epic Games Store has a new free game.
 
+It emails a pre-filled checkout link rather than auto-purchasing — one click on **Place Order** claims the games. Keeps a human in the loop and keeps the whole flow off Epic's bot-detection systems.
+
 ## How it works
 
 1. Cron triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** (05:30 UTC). Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails.
-2. The job hits Epic's public `freeGamesPromotions` API — the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10s timeout and retry up to 3 times on transient errors.
+2. The job hits Epic's public `freeGamesPromotions` API — the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10 s timeout and retry up to 3 times on transient errors (4xx and parse errors fail fast).
 3. Game IDs are diffed against `state/notified.json` (committed to the repo) so the same email never goes out twice.
-4. If anything is new, one HTML email is sent with each game's artwork, description, expiry, and a "Claim now" button per game. When there are 2+ games, a blue "Claim all N" banner at the top links to a bundled-offer checkout URL so one Place Order claims everything.
+4. If anything is new, one HTML email is sent with each game's artwork, description, expiry, and a per-game "Claim now" button. When there are 2+ games, a blue "Claim all N" banner at the top links to a bundled checkout URL so one Place Order claims everything.
 5. If the workflow fails (Epic API down, SMTP rejected, state file corrupted), a separate failure-notification email is sent so you don't silently miss free games.
 
 That's it. ~250 lines of TypeScript, zero browser automation.
-
-## Why not just use `epicgames-freegames-node`?
-
-That tool is great if you're self-hosting on a NAS or home server, but for a hosted-CI-only setup it's overkill:
-
-| Concern | `epicgames-freegames-node` | This repo |
-|---|---|---|
-| Runtime | Docker + Chromium + Puppeteer | Plain Node.js |
-| Auth | Device-code login + session cookies | None — public API |
-| Public ingress | Needs a tunnel (localtunnel / cloudflared) for login redirects | Not needed |
-| Bot-detection surface | Browser navigates `store.epicgames.com` | Just a static JSON endpoint |
-| Config schema | Multi-account, 10+ notifier types, web portal options | 3 secrets |
-| Code size | Thousands of lines | A handful of files |
-
-The trade-off: this version does **not** auto-purchase. It emails you a pre-filled checkout link and you press "Place Order" yourself. For weekly free games that's a ten-second click, and it keeps the whole flow off Epic's bot-detection radar.
 
 ## Setup
 
