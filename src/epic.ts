@@ -17,6 +17,12 @@ export interface FreeGame {
   storeUrl: string;
 }
 
+interface RawPromoOffer {
+  startDate: string;
+  endDate: string;
+  discountSetting?: { discountPercentage: number };
+}
+
 interface RawElement {
   id: string;
   namespace: string;
@@ -28,14 +34,19 @@ interface RawElement {
   keyImages?: Array<{ type: string; url: string }>;
   catalogNs?: { mappings?: Array<{ pageSlug: string; pageType: string }> };
   promotions?: {
-    promotionalOffers?: Array<{
-      promotionalOffers?: Array<{
-        startDate: string;
-        endDate: string;
-        discountSetting?: { discountPercentage: number };
-      }>;
-    }>;
+    promotionalOffers?: Array<{ promotionalOffers?: RawPromoOffer[] }>;
   };
+}
+
+/**
+ * 4xx responses are surfaced through this so the retry loop can recognise them as
+ * non-retriable (a 404 won't fix itself in 500 ms).
+ */
+class NonRetriableHttpError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetriableHttpError';
+  }
 }
 
 /**
@@ -52,11 +63,18 @@ async function fetchJsonWithRetry(url: string): Promise<unknown> {
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
+        if (res.status >= 400 && res.status < 500) {
+          throw new NonRetriableHttpError(`Epic API ${res.status} ${res.statusText}`);
+        }
         throw new Error(`Epic API ${res.status} ${res.statusText}`);
       }
       return (await res.json()) as unknown;
     } catch (err) {
       lastErr = err;
+      // Don't waste retries on 4xx or JSON shape errors - they won't get better.
+      if (err instanceof NonRetriableHttpError || err instanceof SyntaxError) {
+        throw err;
+      }
       if (attempt < MAX_FETCH_ATTEMPTS) {
         const delayMs = 500 * attempt;
         console.warn(
@@ -116,17 +134,22 @@ export async function getFreeGames(): Promise<FreeGame[]> {
   });
 }
 
-function getCurrentFreeOffer(el: RawElement, now: Date) {
-  const groups = el.promotions?.promotionalOffers ?? [];
-  for (const group of groups) {
+/**
+ * If Epic ever lists multiple concurrent free promotions for one game, pick the
+ * one ending latest so the email shows the most lenient claim window.
+ */
+function getCurrentFreeOffer(el: RawElement, now: Date): RawPromoOffer | null {
+  const candidates: RawPromoOffer[] = [];
+  for (const group of el.promotions?.promotionalOffers ?? []) {
     for (const offer of group.promotionalOffers ?? []) {
       if (offer.discountSetting?.discountPercentage !== 0) continue;
       if (new Date(offer.startDate) <= now && now <= new Date(offer.endDate)) {
-        return offer;
+        candidates.push(offer);
       }
     }
   }
-  return null;
+  if (candidates.length === 0) return null;
+  return candidates.reduce((a, b) => (new Date(a.endDate) >= new Date(b.endDate) ? a : b));
 }
 
 function buildCheckoutUrl(offerId: string, namespace: string): string {
