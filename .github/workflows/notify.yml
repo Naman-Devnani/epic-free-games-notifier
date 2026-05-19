@@ -15,9 +15,9 @@ on:
         type: choice
         options: ['false', 'true']
 
+# Workflow-level permissions are restrictive; each job widens them only where needed.
 permissions:
-  contents: write   # to commit state file
-  actions: write    # to delete old workflow runs
+  contents: read
 
 concurrency:
   group: notify-epic
@@ -27,6 +27,8 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write   # needed to commit state/notified.json
     steps:
       - uses: actions/checkout@v4
 
@@ -85,7 +87,7 @@ jobs:
     needs: notify
     if: always()
     permissions:
-      actions: write
+      actions: write   # needed to delete old workflow runs
     steps:
       - name: Delete old workflow runs
         uses: Mattraks/delete-workflow-runs@v2
