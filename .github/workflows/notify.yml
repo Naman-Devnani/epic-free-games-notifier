@@ -2,9 +2,10 @@ name: Notify Epic Free Games
 
 on:
   schedule:
-    - cron: '0 18 * * 4'   # Thursday 18:00 UTC - one hour after Epic's weekly drop
-    - cron: '0 10 * * 5'   # Friday 10:00 UTC - backup
-    - cron: '0 10 * * 1'   # Monday 10:00 UTC - safety net
+    # 11:00 AM IST on Friday, Saturday and Sunday (05:30 UTC).
+    # Epic's weekly free games drop Thursday 10:30 PM IST; this catches them
+    # on Friday morning and gives two backup chances over the weekend.
+    - cron: '30 5 * * 5,6,0'
   workflow_dispatch:
 
 permissions:
