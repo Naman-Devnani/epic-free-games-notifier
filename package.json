@@ -3,6 +3,8 @@
   "version": "1.1.0",
   "description": "Email me when Epic Store has new free games",
   "type": "module",
+  "private": true,
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },
@@ -18,6 +20,5 @@
     "@types/nodemailer": "^6.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
-  },
-  "license": "MIT"
+  }
 }
