@@ -7,6 +7,13 @@ on:
     # on Friday morning and gives two backup chances over the weekend.
     - cron: '30 5 * * 5,6,0'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'If true, skip email send + state save (just log what would happen)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 permissions:
   contents: write   # to commit state file
@@ -38,9 +45,11 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_TO:  ${{ secrets.EMAIL_TO }}
           EMAIL_FROM_NAME: Epic Free Games Bot
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: npm start
 
       - name: Commit updated state
+        if: ${{ inputs.dry_run != 'true' }}
         run: |
           if [ -n "$(git status --porcelain state/notified.json 2>/dev/null)" ]; then
             git config user.name "github-actions[bot]"
@@ -51,6 +60,25 @@ jobs:
           else
             echo "No state changes to commit"
           fi
+
+      - name: Email me if the job failed
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          secure: false
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          from: Epic Free Games Bot <${{ secrets.SMTP_USER }}>
+          to: ${{ secrets.EMAIL_TO }}
+          subject: '[Epic Free Games Bot] Workflow failed'
+          body: |
+            The notifier workflow failed - check the logs:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Triggered by: ${{ github.event_name }}
+            Branch: ${{ github.ref_name }}
 
   cleanup:
     runs-on: ubuntu-latest
