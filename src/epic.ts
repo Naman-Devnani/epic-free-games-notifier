@@ -3,6 +3,9 @@ const FREE_GAMES_URL =
 
 const EPIC_CLIENT_ID = '875a3b57d3a640a6b7f9b4e883463ab4';
 
+const FETCH_TIMEOUT_MS = 10_000;
+const MAX_FETCH_ATTEMPTS = 3;
+
 export interface FreeGame {
   id: string;
   namespace: string;
@@ -35,18 +38,45 @@ interface RawElement {
   };
 }
 
+/**
+ * Retry transient failures and cap each request so a slow Epic doesn't hold the
+ * workflow open. Node 22's fetch has no default timeout, and freeGamesPromotions
+ * occasionally 500s under Thursday-drop load.
+ */
+async function fetchJsonWithRetry(url: string): Promise<unknown> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'epic-free-games-notifier (github.com/Naman-Devnani)' },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        throw new Error(`Epic API ${res.status} ${res.statusText}`);
+      }
+      return (await res.json()) as unknown;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_FETCH_ATTEMPTS) {
+        const delayMs = 500 * attempt;
+        console.warn(
+          `Fetch attempt ${attempt}/${MAX_FETCH_ATTEMPTS} failed: ${(err as Error).message}. Retrying in ${delayMs}ms`,
+        );
+        await new Promise((resolve) => {
+          setTimeout(resolve, delayMs);
+        });
+      }
+    }
+  }
+  throw lastErr;
+}
+
 export async function getFreeGames(): Promise<FreeGame[]> {
   const url = `${FREE_GAMES_URL}?locale=en-US&country=US&allowCountries=US`;
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'epic-free-games-notifier (github.com/Naman-Devnani)' },
-  });
-  if (!response.ok) {
-    throw new Error(`Epic API ${response.status} ${response.statusText}`);
-  }
-
-  const data = (await response.json()) as {
+  const data = (await fetchJsonWithRetry(url)) as {
     data?: { Catalog?: { searchStore?: { elements?: RawElement[] } } };
   };
+
   const elements = data?.data?.Catalog?.searchStore?.elements;
   if (!Array.isArray(elements)) {
     throw new Error('Unexpected Epic API response shape');
@@ -57,10 +87,12 @@ export async function getFreeGames(): Promise<FreeGame[]> {
     const offer = getCurrentFreeOffer(el, now);
     if (!offer) return [];
 
-    const slug =
+    // productSlug is the canonical /store/p/{slug} path. urlSlug is an internal
+    // identifier that often 404s, so we only build a store link when we have
+    // a productSlug or its catalogNs alias.
+    const productSlug =
       el.productSlug ||
       el.catalogNs?.mappings?.find((m) => m.pageType === 'productHome')?.pageSlug ||
-      el.urlSlug ||
       '';
 
     const image =
@@ -78,7 +110,7 @@ export async function getFreeGames(): Promise<FreeGame[]> {
         imageUrl: image,
         endDate: offer.endDate,
         checkoutUrl: buildCheckoutUrl(el.id, el.namespace),
-        storeUrl: slug ? `https://store.epicgames.com/en-US/p/${slug}` : '',
+        storeUrl: productSlug ? `https://store.epicgames.com/en-US/p/${productSlug}` : '',
       },
     ];
   });
