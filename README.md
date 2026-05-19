@@ -4,31 +4,32 @@ Tiny GitHub Actions workflow that emails me whenever the Epic Games Store has a 
 
 ## How it works
 
-1. Cron triggers the workflow Thursday 18:00 UTC (one hour after Epic''s weekly drop), with backup runs on Friday and Monday.
-2. The job hits Epic''s public `freeGamesPromotions` API - the same endpoint Epic''s own homepage uses. No auth, no browser, no login.
+1. Cron triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** (05:30 UTC). Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails.
+2. The job hits Epic's public `freeGamesPromotions` API — the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10s timeout and retry up to 3 times on transient errors.
 3. Game IDs are diffed against `state/notified.json` (committed to the repo) so the same email never goes out twice.
-4. If anything is new, an HTML email is sent with each game''s artwork, description, expiry, and a one-click claim link.
+4. If anything is new, one HTML email is sent with each game's artwork, description, expiry, and a "Claim now" button per game. When there are 2+ games, a blue "Claim all N" banner at the top links to a bundled-offer checkout URL so one Place Order claims everything.
+5. If the workflow fails (Epic API down, SMTP rejected, state file corrupted), a separate failure-notification email is sent so you don't silently miss free games.
 
-That''s it. ~200 lines of TypeScript, zero browser automation.
+That's it. ~250 lines of TypeScript, zero browser automation.
 
 ## Why not just use `epicgames-freegames-node`?
 
-That tool is great if you''re self-hosting on a NAS or home server, but for a hosted-CI-only setup it''s overkill:
+That tool is great if you're self-hosting on a NAS or home server, but for a hosted-CI-only setup it's overkill:
 
 | Concern | `epicgames-freegames-node` | This repo |
 |---|---|---|
 | Runtime | Docker + Chromium + Puppeteer | Plain Node.js |
-| Auth | Device-code login + session cookies | None - public API |
+| Auth | Device-code login + session cookies | None — public API |
 | Public ingress | Needs a tunnel (localtunnel / cloudflared) for login redirects | Not needed |
 | Bot-detection surface | Browser navigates `store.epicgames.com` | Just a static JSON endpoint |
 | Config schema | Multi-account, 10+ notifier types, web portal options | 3 secrets |
 | Code size | Thousands of lines | A handful of files |
 
-The trade-off: this version does **not** auto-purchase. It emails you a pre-filled checkout link and you press "Place Order" yourself. For weekly free games that''s a ten-second click, and it keeps the whole flow off Epic''s bot-detection radar.
+The trade-off: this version does **not** auto-purchase. It emails you a pre-filled checkout link and you press "Place Order" yourself. For weekly free games that's a ten-second click, and it keeps the whole flow off Epic's bot-detection radar.
 
 ## Setup
 
-Add three repository secrets (Settings -> Secrets and variables -> Actions):
+Add three repository secrets (Settings → Secrets and variables → Actions):
 
 | Name | Value |
 |---|---|
@@ -38,10 +39,26 @@ Add three repository secrets (Settings -> Secrets and variables -> Actions):
 
 Then either wait for the next scheduled run or trigger it manually from the Actions tab.
 
+## Manual operations
+
+**Dry run** — verify the code without sending an email or changing state. Actions tab → "Notify Epic Free Games" → "Run workflow" → set `dry_run` to `true`. Logs will show what *would* have been sent.
+
+**Type-check locally** — `npm run typecheck` (runs `tsc --noEmit`, no build artifacts produced).
+
+**Reset notification state** — edit `state/notified.json` directly in the repo (commit the change). Setting it to `[]` will re-notify about every currently free game on the next run.
+
 ## Files
 
-- `src/epic.ts` - calls Epic''s public API, filters for currently-free promos, builds checkout URLs
-- `src/state.ts` - reads/writes `state/notified.json`
-- `src/notify.ts` - composes the HTML email and sends via nodemailer
-- `src/index.ts` - glues it together
-- `.github/workflows/notify.yml` - schedule, secrets wiring, state commit, run cleanup
+| File | Purpose |
+|---|---|
+| `src/epic.ts` | Calls Epic's public API, picks current free promos, builds checkout URLs |
+| `src/state.ts` | Reads/writes `state/notified.json` (throws on corrupt JSON rather than silently re-sending) |
+| `src/notify.ts` | Composes the HTML email and sends via nodemailer |
+| `src/index.ts` | Orchestrates the flow, supports `DRY_RUN` |
+| `.github/workflows/notify.yml` | Schedule, secrets wiring, state commit, failure email, cleanup |
+
+## Known limitations
+
+- **Failure email shares SMTP creds with the main email.** If your Gmail App Password is revoked, neither the free-games email nor the failure email can send. The only signal is the workflow turning red in the Actions tab.
+- **No reminders.** If you ignore the email, you won't be re-notified about the same game. The dedup-by-ID logic is permanent.
+- **Country hardcoded to US.** Epic's free games are usually global, so this doesn't matter in practice; the `country=US` parameter is only for catalog metadata.
