@@ -99,3 +99,4 @@ npm run typecheck  # runs tsc --noEmit, no build artifacts produced
 - **Failure email shares SMTP creds with the main email.** If your Gmail App Password is revoked, neither the free-games email nor the failure email can send. The only signal is the workflow turning red in the Actions tab.
 - **No reminders.** If you ignore the email, you won't be re-notified about the same game. The dedup-by-ID logic is permanent.
 - **Country hardcoded to US.** Epic's free games are usually global, so this doesn't matter in practice; the `country=US` parameter is only for catalog metadata.
+- **"Claim" links assume you're signed in to Epic.** The buttons link straight to Epic's checkout so a signed-in click lands directly on "Place Order". If you click while signed out, Epic shows an "Account id is missing" page — just sign in and click the link again. (The alternative, wrapping in Epic's login flow, forced a "switch account" chooser on *every* claim, which was worse.)

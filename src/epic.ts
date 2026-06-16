@@ -1,8 +1,6 @@
 const FREE_GAMES_URL =
   'https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions';
 
-const EPIC_CLIENT_ID = '875a3b57d3a640a6b7f9b4e883463ab4';
-
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_FETCH_ATTEMPTS = 3;
 
@@ -153,7 +151,7 @@ function getCurrentFreeOffer(el: RawElement, now: Date): RawPromoOffer | null {
 }
 
 function buildCheckoutUrl(offerId: string, namespace: string): string {
-  return wrapWithLogin(`&offers=1-${namespace}-${offerId}`);
+  return buildPurchaseUrl(`&offers=1-${namespace}-${offerId}`);
 }
 
 /** Build one checkout URL that pre-fills *all* offers, so a single "Place Order" claims them at once. */
@@ -161,17 +159,25 @@ export function buildBundledCheckoutUrl(
   offers: Array<{ id: string; namespace: string }>,
 ): string {
   const params = offers.map((o) => `&offers=1-${o.namespace}-${o.id}`).join('');
-  return wrapWithLogin(params);
+  return buildPurchaseUrl(params);
 }
 
-function wrapWithLogin(offersParams: string): string {
-  const checkout =
+/**
+ * Link straight to Epic's purchase page with the offers pre-filled, so a
+ * signed-in recipient (the normal case when clicking from their own inbox)
+ * lands directly on checkout - one "Place Order" claims everything.
+ *
+ * We deliberately do NOT wrap this in Epic's /id/login flow. Passing a
+ * client_id turns it into an OAuth handshake that bounces an already-logged-in
+ * user to a "switch account" chooser before checkout. The tradeoff: a user who
+ * is signed out when they click gets Epic's "Account id is missing" page and
+ * has to sign in and re-click. That's the rarer case and far less annoying than
+ * the account chooser blocking every claim.
+ */
+function buildPurchaseUrl(offersParams: string): string {
+  return (
     `https://www.epicgames.com/store/purchase?highlightColor=0078f2` +
     offersParams +
-    `&orderId&purchaseToken&showNavigation=true`;
-  const login = new URL('https://www.epicgames.com/id/login');
-  login.searchParams.set('noHostRedirect', 'true');
-  login.searchParams.set('redirectUrl', checkout);
-  login.searchParams.set('client_id', EPIC_CLIENT_ID);
-  return login.toString();
+    `&orderId&purchaseToken&showNavigation=true`
+  );
 }
