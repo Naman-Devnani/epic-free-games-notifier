@@ -10,7 +10,7 @@ The email contains a pre-filled "Claim now" button for each game and, when there
 
 ## How it works
 
-1. **An external scheduler (cron-job.org)** triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** by POSTing a `repository_dispatch` event — this fires on time, to the second (see [Precise scheduling](#precise-scheduling)). GitHub's own `schedule` cron (~11:17 AM IST) is kept as a free backup in case the external scheduler ever misses, but it is best-effort and often delayed 1-3 hours. Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails.
+1. **An external scheduler (cron-job.org)** triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** by POSTing a `repository_dispatch` event — this fires on time, to the second (see [Precise scheduling](#precise-scheduling)). GitHub's own `schedule` cron runs **daily** (~11:17 AM IST) as a free backup: best-effort and often 1-3 hours late, but the daily cadence also catches Epic's **December daily giveaways** (one game/day, ~24h window) and any off-schedule surprise drops. Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails. Dedup makes the extra daily runs harmless no-ops, so a normal week still sends just one email.
 2. The job hits Epic's public `freeGamesPromotions` API, the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10 s timeout and retry up to 3 times on transient errors (4xx and parse errors fail fast).
 3. Game IDs are diffed against `state/notified.json` (committed to the repo) so the same email never goes out twice.
 4. If anything is new, one HTML email is sent. Each game gets its own card (artwork, struck-through original price, description, expiry, "Claim now" button) and a "Claim all N" banner appears at the top when 2+ games are bundled. If Epic has already revealed next week's free games, a "Coming free next" preview is listed at the bottom.
@@ -61,7 +61,7 @@ GitHub's `schedule` cron is best-effort: scheduled runs are deprioritized and ro
 
 The workflow listens for `repository_dispatch` of type `run-notify`, so the body's `event_type` must match exactly.
 
-> **Why a backup cron too?** The workflow keeps GitHub's `schedule` trigger (~11:17 AM IST) so that if cron-job.org is ever down or the token expires, you still get a (late) email instead of silence. The dedup state file means the backup run is a harmless no-op when the on-time run already sent.
+> **Why a backup cron too?** The workflow keeps GitHub's `schedule` trigger (daily, ~11:17 AM IST) so that if cron-job.org is ever down or the token expires, you still get a (late) email instead of silence — and the daily cadence catches December's daily giveaways that a weekend-only schedule would miss. The dedup state file means the backup run is a harmless no-op when the on-time run already sent.
 
 ### Using a non-Gmail SMTP server
 

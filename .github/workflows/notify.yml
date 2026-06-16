@@ -7,11 +7,14 @@ on:
   # See README "Precise scheduling" for the cron-job.org setup.
   repository_dispatch:
     types: [run-notify]
-  # Backup trigger: GitHub's own cron. Best-effort (often delayed 1-3h), but
-  # free insurance if the external scheduler ever misses. Fires Fri/Sat/Sun.
+  # Backup trigger: GitHub's own cron, daily. Best-effort (often delayed 1-3h),
+  # but free insurance if the external scheduler ever misses - and the daily
+  # cadence catches Epic's December daily giveaways (one game/day, ~24h window)
+  # plus any off-schedule surprise drops. Dedup makes the extra runs no-ops, so
+  # on a normal week this still sends just the one Thursday-drop email.
   schedule:
     # ~11:17 AM IST (05:47 UTC). Off the half-hour to reduce GitHub queue delay.
-    - cron: '47 5 * * 5,6,0'
+    - cron: '47 5 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
