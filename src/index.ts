@@ -19,6 +19,15 @@ function required(name: string): string {
   return value;
 }
 
+function smtpPort(): number {
+  const raw = process.env.SMTP_PORT ?? '587';
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`Invalid SMTP_PORT: ${raw} (expected a port number like 587 or 465)`);
+  }
+  return port;
+}
+
 async function main(): Promise<void> {
   console.log('Fetching free games from Epic...');
   const games = await getFreeGames();
@@ -48,7 +57,7 @@ async function main(): Promise<void> {
   await sendEmail(
     {
       host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
-      port: Number(process.env.SMTP_PORT ?? 587),
+      port: smtpPort(),
       user: required('SMTP_USER'),
       pass: required('SMTP_PASS'),
       to: required('EMAIL_TO'),

@@ -15,13 +15,13 @@ export interface FreeGame {
   storeUrl: string;
 }
 
-interface RawPromoOffer {
+export interface RawPromoOffer {
   startDate: string;
   endDate: string;
   discountSetting?: { discountPercentage: number };
 }
 
-interface RawElement {
+export interface RawElement {
   id: string;
   namespace: string;
   title: string;
@@ -135,8 +135,10 @@ export async function getFreeGames(): Promise<FreeGame[]> {
 /**
  * If Epic ever lists multiple concurrent free promotions for one game, pick the
  * one ending latest so the email shows the most lenient claim window.
+ *
+ * Exported for tests.
  */
-function getCurrentFreeOffer(el: RawElement, now: Date): RawPromoOffer | null {
+export function getCurrentFreeOffer(el: RawElement, now: Date): RawPromoOffer | null {
   const candidates: RawPromoOffer[] = [];
   for (const group of el.promotions?.promotionalOffers ?? []) {
     for (const offer of group.promotionalOffers ?? []) {
@@ -150,7 +152,8 @@ function getCurrentFreeOffer(el: RawElement, now: Date): RawPromoOffer | null {
   return candidates.reduce((a, b) => (new Date(a.endDate) >= new Date(b.endDate) ? a : b));
 }
 
-function buildCheckoutUrl(offerId: string, namespace: string): string {
+/** Exported for tests. */
+export function buildCheckoutUrl(offerId: string, namespace: string): string {
   return buildPurchaseUrl(`&offers=1-${namespace}-${offerId}`);
 }
 

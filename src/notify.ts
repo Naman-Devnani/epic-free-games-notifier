@@ -31,7 +31,8 @@ export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise
   });
 }
 
-function buildSubject(games: FreeGame[]): string {
+/** Exported for tests. */
+export function buildSubject(games: FreeGame[]): string {
   const titles = games.map((g) => g.title);
   const joined = titles.join(', ');
   if (joined.length <= MAX_SUBJECT_TITLES_LENGTH) {
