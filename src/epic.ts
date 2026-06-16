@@ -24,6 +24,7 @@ export interface UpcomingGame {
   originalPrice: string;
   startDate: string;
   storeUrl: string;
+  imageUrl: string;
 }
 
 export interface RawPromoOffer {
@@ -150,6 +151,15 @@ function originalPriceOf(el: RawElement): string {
   return el.price?.totalPrice?.fmtPrice?.originalPrice ?? '';
 }
 
+function imageUrlFor(el: RawElement): string {
+  return (
+    el.keyImages?.find((i) => i.type === 'OfferImageWide')?.url ||
+    el.keyImages?.find((i) => i.type === 'DieselStoreFrontWide')?.url ||
+    el.keyImages?.[0]?.url ||
+    ''
+  );
+}
+
 function dedupeById<T extends { id: string }>(items: T[]): T[] {
   const seen = new Set<string>();
   return items.filter((x) => {
@@ -171,19 +181,13 @@ export function parseFreeGames(elements: RawElement[], now: Date): FreeGame[] {
     if (!offer) return [];
     if (isPlaceholderTitle(el.title)) return [];
 
-    const image =
-      el.keyImages?.find((i) => i.type === 'OfferImageWide')?.url ||
-      el.keyImages?.find((i) => i.type === 'DieselStoreFrontWide')?.url ||
-      el.keyImages?.[0]?.url ||
-      '';
-
     return [
       {
         id: el.id,
         namespace: el.namespace,
         title: el.title,
         description: el.description?.trim() ?? '',
-        imageUrl: image,
+        imageUrl: imageUrlFor(el),
         endDate: offer.endDate,
         checkoutUrl: buildCheckoutUrl(el.id, el.namespace),
         storeUrl: storeUrlFor(el),
@@ -211,6 +215,7 @@ export function parseUpcomingGames(elements: RawElement[], now: Date): UpcomingG
         originalPrice: originalPriceOf(el),
         startDate: offer.startDate,
         storeUrl: storeUrlFor(el),
+        imageUrl: imageUrlFor(el),
       },
     ];
   });

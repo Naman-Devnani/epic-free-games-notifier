@@ -133,7 +133,7 @@ function renderHtml(games: FreeGame[], timeZone: string, upcoming: UpcomingGame[
 
   const upcomingSection = upcoming.length > 0
     ? `<div style="margin:8px 0 0 0;padding:16px 18px;border:1px dashed #c7ccd1;border-radius:10px;background:#fbfbfc">
-         <p style="margin:0 0 10px 0;font-size:13px;font-weight:700;color:#5d6166;text-transform:uppercase;letter-spacing:.04em">Coming free next</p>
+         <p style="margin:0 0 14px 0;font-size:13px;font-weight:700;color:#5d6166;text-transform:uppercase;letter-spacing:.04em">Coming free next</p>
          ${upcoming
            .map((u) => {
              const starts = formatExpiry(u.startDate, timeZone);
@@ -143,7 +143,13 @@ function renderHtml(games: FreeGame[], timeZone: string, upcoming: UpcomingGame[
              const name = u.storeUrl
                ? `<a href="${escapeHtml(u.storeUrl)}" style="color:#0f1923;text-decoration:none;font-weight:600">${escapeHtml(u.title)}</a>`
                : `<span style="color:#0f1923;font-weight:600">${escapeHtml(u.title)}</span>`;
-             return `<p style="margin:0 0 6px 0;font-size:14px;color:#5d6166">${name} &mdash; ${price}free from ${starts}</p>`;
+             const img = u.imageUrl
+               ? `<img src="${escapeHtml(u.imageUrl)}" alt="${escapeHtml(u.title)}" style="width:100%;max-width:600px;border-radius:6px;display:block;margin-bottom:8px"/>`
+               : '';
+             return `<div style="margin:0 0 16px 0">
+                       ${img}
+                       <p style="margin:0;font-size:14px;color:#5d6166">${name} &mdash; ${price}free from ${starts}</p>
+                     </div>`;
            })
            .join('')}
        </div>`

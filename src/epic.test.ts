@@ -38,6 +38,7 @@ function upcomingElement(over: Partial<RawElement> = {}): RawElement {
     title: 'A Future Free Game',
     productSlug: 'future-free-game',
     price: { totalPrice: { fmtPrice: { originalPrice: '₹719.00' } } },
+    keyImages: [{ type: 'OfferImageWide', url: 'https://img/up-wide.jpg' }],
     promotions: {
       upcomingPromotionalOffers: [
         { promotionalOffers: [{ ...FUTURE_WINDOW, discountSetting: { discountPercentage: 0 } }] },
@@ -190,6 +191,7 @@ test('parseUpcomingGames: maps a future free game with its start date and price'
   assert.equal(up[0].startDate, FUTURE_WINDOW.startDate);
   assert.equal(up[0].originalPrice, '₹719.00');
   assert.equal(up[0].storeUrl, 'https://store.epicgames.com/en-US/p/future-free-game');
+  assert.equal(up[0].imageUrl, 'https://img/up-wide.jpg');
 });
 
 test('parseUpcomingGames: keeps "Mystery Game" upcoming teasers (useful info)', () => {
