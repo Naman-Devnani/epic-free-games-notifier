@@ -4,14 +4,16 @@
 
 Tiny GitHub Actions workflow that emails you whenever the Epic Games Store has a new free game.
 
-The email contains a pre-filled "Claim now" button for each game that drops you straight onto Epic's checkout for that game. You finish by pressing "Add to library" on Epic. The games are free, so no payment screen. Human stays in the loop, nothing automates Epic's checkout. (Epic claims free games one at a time — there's no way to bundle several into a single checkout — so each game gets its own button.)
+The email contains a pre-filled "Claim now" button for each game and, when there are 2+ games, a single "Claim all N" button at the top that loads every game into one checkout. You finish by pressing "Add to library" on Epic. The games are free, so no payment screen. Human stays in the loop, nothing automates Epic's checkout.
+
+> **Epic UI quirk:** the "Claim all" checkout page only *displays* one of the games, but clicking "Add to library" once claims **all** the games in the link (the order includes every offer — verified on a fresh account). The banner says so up front so it isn't alarming.
 
 ## How it works
 
 1. **An external scheduler (cron-job.org)** triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** by POSTing a `repository_dispatch` event — this fires on time, to the second (see [Precise scheduling](#precise-scheduling)). GitHub's own `schedule` cron (~11:17 AM IST) is kept as a free backup in case the external scheduler ever misses, but it is best-effort and often delayed 1-3 hours. Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails.
 2. The job hits Epic's public `freeGamesPromotions` API, the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10 s timeout and retry up to 3 times on transient errors (4xx and parse errors fail fast).
 3. Game IDs are diffed against `state/notified.json` (committed to the repo) so the same email never goes out twice.
-4. If anything is new, one HTML email is sent. Each game gets its own card (artwork, description, expiry, "Claim now" button); when there are 2+ games, a note at the top reminds you to claim each one (Epic adds free games to your library individually).
+4. If anything is new, one HTML email is sent. Each game gets its own card (artwork, description, expiry, "Claim now" button) and a "Claim all N" banner appears at the top when 2+ games are bundled.
 5. If the workflow fails (Epic API down, SMTP rejected, state file corrupted), a separate failure-notification email is sent so you don't silently miss free games.
 6. A second job, **cleanup**, runs after each notify job and deletes old workflow runs (keeps the 2 most recent, anything older than 1 day gets pruned) so the Actions tab stays tidy.
 
@@ -100,4 +102,4 @@ npm run typecheck  # runs tsc --noEmit, no build artifacts produced
 - **No reminders.** If you ignore the email, you won't be re-notified about the same game. The dedup-by-ID logic is permanent.
 - **Country hardcoded to US.** Epic's free games are usually global, so this doesn't matter in practice; the `country=US` parameter is only for catalog metadata.
 - **"Claim" links assume you're signed in to Epic.** The buttons link straight to Epic's checkout so a signed-in click lands directly on "Add to library". If you click while signed out, Epic shows an "Account id is missing" page — just sign in and click the link again. (The alternative, wrapping in Epic's login flow, forced a "switch account" chooser on *every* claim, which was worse.)
-- **No one-click "claim all".** Epic's free-game checkout handles a single item at a time (no cart, no multi-offer URL), so each game must be claimed from its own button. A multi-offer URL silently claims only one game, so the feature was removed rather than mislead.
+- **"Claim all" checkout shows only one game.** Epic's free-game overlay renders just one of the bundled games even though clicking "Add to library" claims all of them. Cosmetic Epic bug, not a claim failure — the email banner calls this out so it isn't mistaken for a broken link.
