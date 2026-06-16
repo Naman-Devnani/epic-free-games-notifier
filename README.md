@@ -7,9 +7,12 @@ Tiny GitHub Actions workflow that emails you whenever the Epic Games Store has a
 
 The email is a dark, cyberpunk-neon themed HTML message (gradients with solid-colour fallbacks so it still renders correctly in Gmail). It contains a pre-filled "Claim now" button for each game and, when there are 2+ games, a single "Claim all N" button at the top that loads every game into one checkout. You finish by pressing "Add to library" on Epic. The games are free, so no payment screen. Human stays in the loop, nothing automates Epic's checkout.
 
-<p align="center">
-  <img src="docs/email-preview.jpg" alt="Example notification email" width="420"/>
-</p>
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/email-main.jpg" alt="This week's free games" width="100%"/></td>
+    <td width="50%" valign="top"><img src="docs/email-upcoming.jpg" alt="Coming free next preview" width="100%"/></td>
+  </tr>
+</table>
 
 > **Epic UI quirk:** the "Claim all" checkout page only *displays* one of the games, but clicking "Add to library" once claims **all** the games in the link (the order includes every offer — verified on a fresh account). The banner says so up front so it isn't alarming.
 
