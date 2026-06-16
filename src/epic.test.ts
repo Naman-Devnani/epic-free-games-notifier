@@ -4,10 +4,28 @@ import {
   getCurrentFreeOffer,
   buildCheckoutUrl,
   buildBundledCheckoutUrl,
+  parseFreeGames,
   type RawElement,
 } from './epic.ts';
 
 const NOW = new Date('2026-06-16T00:00:00Z');
+
+const ACTIVE_WINDOW = { startDate: '2026-06-13T00:00:00Z', endDate: '2026-06-20T00:00:00Z' };
+
+function freeElement(over: Partial<RawElement> = {}): RawElement {
+  return {
+    id: 'offer-1',
+    namespace: 'ns-1',
+    title: 'A Free Game',
+    productSlug: 'a-free-game',
+    promotions: {
+      promotionalOffers: [
+        { promotionalOffers: [{ ...ACTIVE_WINDOW, discountSetting: { discountPercentage: 0 } }] },
+      ],
+    },
+    ...over,
+  };
+}
 
 function el(offers: Array<{ start: string; end: string; pct?: number }>): RawElement {
   return {
@@ -89,4 +107,40 @@ test('buildBundledCheckoutUrl: stacks one offers= param per game', () => {
   assert.ok(url.includes('&offers=1-na-A'));
   assert.ok(url.includes('&offers=1-nb-B'));
   assert.equal(url.match(/&offers=/g)?.length, 2);
+});
+
+test('parseFreeGames: maps an active free element with a store URL and checkout URL', () => {
+  const games = parseFreeGames([freeElement()], NOW);
+  assert.equal(games.length, 1);
+  assert.equal(games[0].title, 'A Free Game');
+  assert.equal(games[0].endDate, ACTIVE_WINDOW.endDate);
+  assert.equal(games[0].storeUrl, 'https://store.epicgames.com/en-US/p/a-free-game');
+  assert.ok(games[0].checkoutUrl.includes('&offers=1-ns-1-offer-1'));
+});
+
+test('parseFreeGames: drops elements with no active free offer', () => {
+  const notFree = freeElement({
+    id: 'paid',
+    promotions: {
+      promotionalOffers: [
+        { promotionalOffers: [{ ...ACTIVE_WINDOW, discountSetting: { discountPercentage: 25 } }] },
+      ],
+    },
+  });
+  assert.deepEqual(parseFreeGames([notFree], NOW), []);
+});
+
+test('parseFreeGames: drops "Mystery Game" placeholders even if free', () => {
+  assert.deepEqual(parseFreeGames([freeElement({ title: 'Mystery Game' })], NOW), []);
+  assert.deepEqual(parseFreeGames([freeElement({ title: '  mystery game  ' })], NOW), []);
+});
+
+test('parseFreeGames: de-duplicates the same offer id within one response', () => {
+  const games = parseFreeGames([freeElement(), freeElement()], NOW);
+  assert.equal(games.length, 1);
+});
+
+test('parseFreeGames: no store URL when there is no productSlug or catalog alias', () => {
+  const games = parseFreeGames([freeElement({ productSlug: null, catalogNs: undefined })], NOW);
+  assert.equal(games[0].storeUrl, '');
 });

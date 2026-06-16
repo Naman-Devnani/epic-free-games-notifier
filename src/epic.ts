@@ -87,8 +87,15 @@ async function fetchJsonWithRetry(url: string): Promise<unknown> {
   throw lastErr;
 }
 
-export async function getFreeGames(): Promise<FreeGame[]> {
-  const url = `${FREE_GAMES_URL}?locale=en-US&country=US&allowCountries=US`;
+export async function getFreeGames(
+  // Defaults read from env so the workflow can override per-region; fall back to
+  // US/en-US (Epic's free games are global, so this only affects catalog metadata).
+  country = process.env.EPIC_COUNTRY ?? 'US',
+  locale = process.env.EPIC_LOCALE ?? 'en-US',
+): Promise<FreeGame[]> {
+  const url =
+    `${FREE_GAMES_URL}?locale=${encodeURIComponent(locale)}` +
+    `&country=${encodeURIComponent(country)}&allowCountries=${encodeURIComponent(country)}`;
   const data = (await fetchJsonWithRetry(url)) as {
     data?: { Catalog?: { searchStore?: { elements?: RawElement[] } } };
   };
@@ -98,10 +105,25 @@ export async function getFreeGames(): Promise<FreeGame[]> {
     throw new Error('Unexpected Epic API response shape');
   }
 
-  const now = new Date();
-  return elements.flatMap((el) => {
+  return parseFreeGames(elements, new Date());
+}
+
+/** Upcoming free games are sometimes listed as a "Mystery Game" teaser. */
+function isPlaceholderTitle(title: string | undefined): boolean {
+  return !title?.trim() || /^mystery game$/i.test(title.trim());
+}
+
+/**
+ * Pure transform of raw Epic catalog elements into the games we'll email about:
+ * keep only those with a currently-active 100%-off offer, drop placeholders, and
+ * de-duplicate by offer id (Epic occasionally lists the same offer twice in one
+ * response). Exported for tests.
+ */
+export function parseFreeGames(elements: RawElement[], now: Date): FreeGame[] {
+  const games = elements.flatMap((el) => {
     const offer = getCurrentFreeOffer(el, now);
     if (!offer) return [];
+    if (isPlaceholderTitle(el.title)) return [];
 
     // productSlug is the canonical /store/p/{slug} path. urlSlug is an internal
     // identifier that often 404s, so we only build a store link when we have
@@ -129,6 +151,13 @@ export async function getFreeGames(): Promise<FreeGame[]> {
         storeUrl: productSlug ? `https://store.epicgames.com/en-US/p/${productSlug}` : '',
       },
     ];
+  });
+
+  const seen = new Set<string>();
+  return games.filter((g) => {
+    if (seen.has(g.id)) return false;
+    seen.add(g.id);
+    return true;
   });
 }
 

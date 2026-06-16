@@ -76,6 +76,10 @@ SMTP_PORT: '465'   # 465 enables TLS, 587 uses STARTTLS
 
 Expiry times in the email are rendered in `DISPLAY_TZ` (an IANA zone, default `Asia/Kolkata`). To show a different zone, edit the `DISPLAY_TZ` value in the workflow's `env:` block, e.g. `America/New_York` or `UTC`.
 
+### Using a different region's catalog
+
+The Epic API call defaults to `EPIC_COUNTRY=US` and `EPIC_LOCALE=en-US`. Free games are the same worldwide, so this only changes catalog metadata (titles/descriptions in another language). Set `EPIC_COUNTRY` / `EPIC_LOCALE` in the workflow's `env:` block to override.
+
 ## Manual operations
 
 **Dry run.** Verify the code without sending an email or changing state. Actions tab → "Notify Epic Free Games" → "Run workflow" → set `dry_run` to `true`. Logs will show what *would* have been sent.
@@ -104,6 +108,6 @@ npm run typecheck  # runs tsc --noEmit, no build artifacts produced
 
 - **Failure email shares SMTP creds with the main email.** If your Gmail App Password is revoked, neither the free-games email nor the failure email can send. The only signal is the workflow turning red in the Actions tab.
 - **No reminders.** If you ignore the email, you won't be re-notified about the same game. The dedup-by-ID logic is permanent.
-- **Country hardcoded to US.** Epic's free games are usually global, so this doesn't matter in practice; the `country=US` parameter is only for catalog metadata.
+- **Country/locale default to US/en-US.** Epic's free games are global, so this only affects catalog metadata; override via the `EPIC_COUNTRY` / `EPIC_LOCALE` env vars in the workflow if you want a different region's catalog.
 - **"Claim" links assume you're signed in to Epic.** The buttons link straight to Epic's checkout so a signed-in click lands directly on "Add to library". If you click while signed out, Epic shows an "Account id is missing" page — just sign in and click the link again. (The alternative, wrapping in Epic's login flow, forced a "switch account" chooser on *every* claim, which was worse.)
 - **"Claim all" checkout shows only one game.** Epic's free-game overlay renders just one of the bundled games even though clicking "Add to library" claims all of them. Cosmetic Epic bug, not a claim failure — the email banner calls this out so it isn't mistaken for a broken link.
