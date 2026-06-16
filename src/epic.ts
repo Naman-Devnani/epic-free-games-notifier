@@ -13,6 +13,17 @@ export interface FreeGame {
   endDate: string;
   checkoutUrl: string;
   storeUrl: string;
+  /** Formatted normal price, e.g. "₹359.00" - shown struck-through next to "Free". */
+  originalPrice: string;
+}
+
+/** A free game that hasn't started yet - shown as a "coming next" preview. */
+export interface UpcomingGame {
+  id: string;
+  title: string;
+  originalPrice: string;
+  startDate: string;
+  storeUrl: string;
 }
 
 export interface RawPromoOffer {
@@ -31,8 +42,10 @@ export interface RawElement {
   offerType?: string;
   keyImages?: Array<{ type: string; url: string }>;
   catalogNs?: { mappings?: Array<{ pageSlug: string; pageType: string }> };
+  price?: { totalPrice?: { fmtPrice?: { originalPrice?: string } } };
   promotions?: {
     promotionalOffers?: Array<{ promotionalOffers?: RawPromoOffer[] }>;
+    upcomingPromotionalOffers?: Array<{ promotionalOffers?: RawPromoOffer[] }>;
   };
 }
 
@@ -87,12 +100,20 @@ async function fetchJsonWithRetry(url: string): Promise<unknown> {
   throw lastErr;
 }
 
-export async function getFreeGames(
+export interface Promotions {
+  /** Currently-free games (100% off, active window). */
+  current: FreeGame[];
+  /** Free games that haven't started yet (revealed next-week giveaways). */
+  upcoming: UpcomingGame[];
+}
+
+export async function getPromotions(
   // Defaults read from env so the workflow can override per-region; fall back to
-  // US/en-US (Epic's free games are global, so this only affects catalog metadata).
+  // US/en-US (Epic's free games are global, so this mainly affects price currency
+  // and catalog metadata).
   country = process.env.EPIC_COUNTRY ?? 'US',
   locale = process.env.EPIC_LOCALE ?? 'en-US',
-): Promise<FreeGame[]> {
+): Promise<Promotions> {
   const url =
     `${FREE_GAMES_URL}?locale=${encodeURIComponent(locale)}` +
     `&country=${encodeURIComponent(country)}&allowCountries=${encodeURIComponent(country)}`;
@@ -105,12 +126,37 @@ export async function getFreeGames(
     throw new Error('Unexpected Epic API response shape');
   }
 
-  return parseFreeGames(elements, new Date());
+  const now = new Date();
+  return { current: parseFreeGames(elements, now), upcoming: parseUpcomingGames(elements, now) };
 }
 
 /** Upcoming free games are sometimes listed as a "Mystery Game" teaser. */
 function isPlaceholderTitle(title: string | undefined): boolean {
   return !title?.trim() || /^mystery game$/i.test(title.trim());
+}
+
+/** The canonical /store/p/{slug} link, or '' when Epic gives us no usable slug. */
+function storeUrlFor(el: RawElement): string {
+  // urlSlug is an internal identifier that often 404s, so we only build a link
+  // from productSlug or its catalogNs productHome alias.
+  const slug =
+    el.productSlug ||
+    el.catalogNs?.mappings?.find((m) => m.pageType === 'productHome')?.pageSlug ||
+    '';
+  return slug ? `https://store.epicgames.com/en-US/p/${slug}` : '';
+}
+
+function originalPriceOf(el: RawElement): string {
+  return el.price?.totalPrice?.fmtPrice?.originalPrice ?? '';
+}
+
+function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((x) => {
+    if (seen.has(x.id)) return false;
+    seen.add(x.id);
+    return true;
+  });
 }
 
 /**
@@ -124,14 +170,6 @@ export function parseFreeGames(elements: RawElement[], now: Date): FreeGame[] {
     const offer = getCurrentFreeOffer(el, now);
     if (!offer) return [];
     if (isPlaceholderTitle(el.title)) return [];
-
-    // productSlug is the canonical /store/p/{slug} path. urlSlug is an internal
-    // identifier that often 404s, so we only build a store link when we have
-    // a productSlug or its catalogNs alias.
-    const productSlug =
-      el.productSlug ||
-      el.catalogNs?.mappings?.find((m) => m.pageType === 'productHome')?.pageSlug ||
-      '';
 
     const image =
       el.keyImages?.find((i) => i.type === 'OfferImageWide')?.url ||
@@ -148,17 +186,36 @@ export function parseFreeGames(elements: RawElement[], now: Date): FreeGame[] {
         imageUrl: image,
         endDate: offer.endDate,
         checkoutUrl: buildCheckoutUrl(el.id, el.namespace),
-        storeUrl: productSlug ? `https://store.epicgames.com/en-US/p/${productSlug}` : '',
+        storeUrl: storeUrlFor(el),
+        originalPrice: originalPriceOf(el),
       },
     ];
   });
 
-  const seen = new Set<string>();
-  return games.filter((g) => {
-    if (seen.has(g.id)) return false;
-    seen.add(g.id);
-    return true;
+  return dedupeById(games);
+}
+
+/**
+ * Pure transform for the "coming next" preview: elements with a *future* 100%-off
+ * offer that hasn't ended yet. Placeholder ("Mystery Game") titles are kept here
+ * on purpose - "a mystery game is coming" is itself useful info. Exported for tests.
+ */
+export function parseUpcomingGames(elements: RawElement[], now: Date): UpcomingGame[] {
+  const games = elements.flatMap((el) => {
+    const offer = getUpcomingFreeOffer(el, now);
+    if (!offer) return [];
+    return [
+      {
+        id: el.id,
+        title: el.title,
+        originalPrice: originalPriceOf(el),
+        startDate: offer.startDate,
+        storeUrl: storeUrlFor(el),
+      },
+    ];
   });
+
+  return dedupeById(games);
 }
 
 /**
@@ -179,6 +236,23 @@ export function getCurrentFreeOffer(el: RawElement, now: Date): RawPromoOffer | 
   }
   if (candidates.length === 0) return null;
   return candidates.reduce((a, b) => (new Date(a.endDate) >= new Date(b.endDate) ? a : b));
+}
+
+/**
+ * The soonest not-yet-ended 100%-off offer from upcomingPromotionalOffers. Epic
+ * also lists upcoming *discounts* (20/40/50% off) here, so the 0% filter matters.
+ * Exported for tests.
+ */
+export function getUpcomingFreeOffer(el: RawElement, now: Date): RawPromoOffer | null {
+  const candidates: RawPromoOffer[] = [];
+  for (const group of el.promotions?.upcomingPromotionalOffers ?? []) {
+    for (const offer of group.promotionalOffers ?? []) {
+      if (offer.discountSetting?.discountPercentage !== 0) continue;
+      if (new Date(offer.endDate) > now) candidates.push(offer);
+    }
+  }
+  if (candidates.length === 0) return null;
+  return candidates.reduce((a, b) => (new Date(a.startDate) <= new Date(b.startDate) ? a : b));
 }
 
 /** Exported for tests. */

@@ -1,6 +1,6 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getFreeGames } from './epic.ts';
+import { getPromotions } from './epic.ts';
 import { loadNotifiedIds, saveNotifiedIds } from './state.ts';
 import { sendEmail } from './notify.ts';
 
@@ -42,16 +42,19 @@ function displayTimeZone(): string {
 
 async function main(): Promise<void> {
   console.log('Fetching free games from Epic...');
-  const games = await getFreeGames();
+  const { current, upcoming } = await getPromotions();
 
-  if (games.length === 0) {
+  if (current.length === 0) {
     console.log('No free games available right now');
     return;
   }
-  console.log(`Currently free: ${games.map((g) => g.title).join(', ')}`);
+  console.log(`Currently free: ${current.map((g) => g.title).join(', ')}`);
+  if (upcoming.length > 0) {
+    console.log(`Coming next: ${upcoming.map((g) => g.title).join(', ')}`);
+  }
 
   const notified = await loadNotifiedIds(STATE_FILE);
-  const fresh = games.filter((g) => !notified.has(g.id));
+  const fresh = current.filter((g) => !notified.has(g.id));
 
   if (fresh.length === 0) {
     console.log('Already notified about all current free games - nothing to send');
@@ -77,6 +80,7 @@ async function main(): Promise<void> {
       displayTimeZone: displayTimeZone(),
     },
     fresh,
+    upcoming,
   );
 
   // State save is intentionally ordered after the email send: we'd rather

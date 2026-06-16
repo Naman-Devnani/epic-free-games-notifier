@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { buildBundledCheckoutUrl } from './epic.ts';
-import type { FreeGame } from './epic.ts';
+import type { FreeGame, UpcomingGame } from './epic.ts';
 
 export interface EmailConfig {
   host: string;
@@ -18,7 +18,11 @@ const MAX_SUBJECT_TITLES_LENGTH = 55;
 
 const MAX_SEND_ATTEMPTS = 3;
 
-export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise<void> {
+export async function sendEmail(
+  config: EmailConfig,
+  games: FreeGame[],
+  upcoming: UpcomingGame[] = [],
+): Promise<void> {
   const transport = nodemailer.createTransport({
     host: config.host,
     port: config.port,
@@ -30,8 +34,8 @@ export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise
     from: `"${config.fromName ?? 'Epic Free Games Bot'}" <${config.user}>`,
     to: config.to,
     subject: buildSubject(games),
-    html: renderHtml(games, config.displayTimeZone),
-    text: renderText(games, config.displayTimeZone),
+    html: renderHtml(games, config.displayTimeZone, upcoming),
+    text: renderText(games, config.displayTimeZone, upcoming),
   };
 
   // Retry transient SMTP failures so one Gmail hiccup doesn't drop the whole
@@ -88,7 +92,16 @@ export function formatExpiry(endDate: string, timeZone: string): string {
   });
 }
 
-function renderHtml(games: FreeGame[], timeZone: string): string {
+/** Format a free game's price as struck-through original next to "Free". */
+function priceHtml(originalPrice: string): string {
+  if (!originalPrice) return '';
+  return `<p style="margin:0 0 10px 0;font-size:14px">
+            <span style="color:#8a8f95;text-decoration:line-through">${escapeHtml(originalPrice)}</span>
+            &nbsp;<span style="color:#1a8f3c;font-weight:700">Free</span>
+          </p>`;
+}
+
+function renderHtml(games: FreeGame[], timeZone: string, upcoming: UpcomingGame[]): string {
   // One link that claims every game at once. Epic's checkout overlay confusingly
   // shows only one of the games, but clicking "Add to library" claims all the
   // offers in the URL - so the banner says so up front to avoid alarm.
@@ -109,6 +122,7 @@ function renderHtml(games: FreeGame[], timeZone: string): string {
         <div style="margin:0 0 28px 0;padding:18px;border:1px solid #e3e3e3;border-radius:10px;background:#fff">
           ${img}
           <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f1923">${escapeHtml(g.title)}</h2>
+          ${priceHtml(g.originalPrice)}
           <p style="margin:0 0 10px 0;color:#5d6166;font-size:14px;line-height:1.5">${escapeHtml(g.description)}</p>
           <p style="margin:0 0 14px 0;color:#8a8f95;font-size:12px">Free until ${endsOn}</p>
           <a href="${escapeHtml(g.checkoutUrl)}" style="display:inline-block;padding:11px 22px;background:#0078f2;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px">Claim now</a>
@@ -117,12 +131,31 @@ function renderHtml(games: FreeGame[], timeZone: string): string {
     })
     .join('');
 
+  const upcomingSection = upcoming.length > 0
+    ? `<div style="margin:8px 0 0 0;padding:16px 18px;border:1px dashed #c7ccd1;border-radius:10px;background:#fbfbfc">
+         <p style="margin:0 0 10px 0;font-size:13px;font-weight:700;color:#5d6166;text-transform:uppercase;letter-spacing:.04em">Coming free next</p>
+         ${upcoming
+           .map((u) => {
+             const starts = formatExpiry(u.startDate, timeZone);
+             const price = u.originalPrice
+               ? `<span style="color:#8a8f95;text-decoration:line-through">${escapeHtml(u.originalPrice)}</span> `
+               : '';
+             const name = u.storeUrl
+               ? `<a href="${escapeHtml(u.storeUrl)}" style="color:#0f1923;text-decoration:none;font-weight:600">${escapeHtml(u.title)}</a>`
+               : `<span style="color:#0f1923;font-weight:600">${escapeHtml(u.title)}</span>`;
+             return `<p style="margin:0 0 6px 0;font-size:14px;color:#5d6166">${name} &mdash; ${price}free from ${starts}</p>`;
+           })
+           .join('')}
+       </div>`
+    : '';
+
   return `<!DOCTYPE html>
 <html><body style="margin:0;padding:24px;background:#f6f7f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <div style="max-width:640px;margin:0 auto">
   <h1 style="margin:0 0 20px 0;font-size:24px;color:#0f1923">This week's free games</h1>
   ${claimAllBanner}
   ${cards}
+  ${upcomingSection}
   <p style="margin-top:24px;color:#8a8f95;font-size:12px;text-align:center">
     Sent automatically. Click "Claim now" then press "Add to library" on Epic - the games are free.
   </p>
@@ -130,14 +163,23 @@ function renderHtml(games: FreeGame[], timeZone: string): string {
 </body></html>`;
 }
 
-function renderText(games: FreeGame[], timeZone: string): string {
+function renderText(games: FreeGame[], timeZone: string, upcoming: UpcomingGame[]): string {
   const bundled = games.length > 1
     ? `Claim all ${games.length} in one click (Epic may show only one game, but clicking "Add to library" claims all ${games.length}):\n${buildBundledCheckoutUrl(games)}\n\n---\n\n`
     : '';
   const perGame = games
-    .map((g) => `${g.title}\n${g.description}\nFree until ${formatExpiry(g.endDate, timeZone)}\nClaim: ${g.checkoutUrl}`)
+    .map((g) => {
+      const price = g.originalPrice ? `${g.originalPrice} -> Free` : 'Free';
+      return `${g.title}\n${price}\n${g.description}\nFree until ${formatExpiry(g.endDate, timeZone)}\nClaim: ${g.checkoutUrl}`;
+    })
     .join('\n\n---\n\n');
-  return bundled + perGame;
+  const upcomingText = upcoming.length > 0
+    ? `\n\n===\n\nComing free next:\n` +
+      upcoming
+        .map((u) => `- ${u.title} (${u.originalPrice || 'free'}) from ${formatExpiry(u.startDate, timeZone)}`)
+        .join('\n')
+    : '';
+  return bundled + perGame + upcomingText;
 }
 
 function escapeHtml(s: string): string {

@@ -13,6 +13,7 @@ function game(title: string): FreeGame {
     endDate: '2026-06-20T00:00:00Z',
     checkoutUrl: '',
     storeUrl: '',
+    originalPrice: '',
   };
 }
 

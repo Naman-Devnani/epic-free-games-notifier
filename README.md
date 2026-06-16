@@ -13,7 +13,7 @@ The email contains a pre-filled "Claim now" button for each game and, when there
 1. **An external scheduler (cron-job.org)** triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** by POSTing a `repository_dispatch` event — this fires on time, to the second (see [Precise scheduling](#precise-scheduling)). GitHub's own `schedule` cron (~11:17 AM IST) is kept as a free backup in case the external scheduler ever misses, but it is best-effort and often delayed 1-3 hours. Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails.
 2. The job hits Epic's public `freeGamesPromotions` API, the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10 s timeout and retry up to 3 times on transient errors (4xx and parse errors fail fast).
 3. Game IDs are diffed against `state/notified.json` (committed to the repo) so the same email never goes out twice.
-4. If anything is new, one HTML email is sent. Each game gets its own card (artwork, description, expiry, "Claim now" button) and a "Claim all N" banner appears at the top when 2+ games are bundled.
+4. If anything is new, one HTML email is sent. Each game gets its own card (artwork, struck-through original price, description, expiry, "Claim now" button) and a "Claim all N" banner appears at the top when 2+ games are bundled. If Epic has already revealed next week's free games, a "Coming free next" preview is listed at the bottom.
 5. If the workflow fails (Epic API down, SMTP rejected, state file corrupted), a separate failure-notification email is sent so you don't silently miss free games.
 6. A second job, **cleanup**, runs after each notify job and deletes old workflow runs (keeps the 2 most recent, anything older than 1 day gets pruned) so the Actions tab stays tidy.
 
@@ -98,7 +98,7 @@ npm run typecheck  # runs tsc --noEmit, no build artifacts produced
 
 | File | Purpose |
 |---|---|
-| `src/epic.ts` | Calls Epic's public API, picks current free promos, builds checkout URLs |
+| `src/epic.ts` | Calls Epic's public API, picks current + upcoming free promos and prices, builds checkout URLs |
 | `src/state.ts` | Reads/writes `state/notified.json` (throws on corrupt JSON rather than silently re-sending) |
 | `src/notify.ts` | Composes the HTML email and sends via nodemailer |
 | `src/index.ts` | Orchestrates the flow, supports `DRY_RUN` |

@@ -2,15 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   getCurrentFreeOffer,
+  getUpcomingFreeOffer,
   buildCheckoutUrl,
   buildBundledCheckoutUrl,
   parseFreeGames,
+  parseUpcomingGames,
   type RawElement,
 } from './epic.ts';
 
 const NOW = new Date('2026-06-16T00:00:00Z');
 
 const ACTIVE_WINDOW = { startDate: '2026-06-13T00:00:00Z', endDate: '2026-06-20T00:00:00Z' };
+const FUTURE_WINDOW = { startDate: '2026-06-25T00:00:00Z', endDate: '2026-07-02T00:00:00Z' };
 
 function freeElement(over: Partial<RawElement> = {}): RawElement {
   return {
@@ -18,9 +21,26 @@ function freeElement(over: Partial<RawElement> = {}): RawElement {
     namespace: 'ns-1',
     title: 'A Free Game',
     productSlug: 'a-free-game',
+    price: { totalPrice: { fmtPrice: { originalPrice: '₹359.00' } } },
     promotions: {
       promotionalOffers: [
         { promotionalOffers: [{ ...ACTIVE_WINDOW, discountSetting: { discountPercentage: 0 } }] },
+      ],
+    },
+    ...over,
+  };
+}
+
+function upcomingElement(over: Partial<RawElement> = {}): RawElement {
+  return {
+    id: 'up-1',
+    namespace: 'ns-up',
+    title: 'A Future Free Game',
+    productSlug: 'future-free-game',
+    price: { totalPrice: { fmtPrice: { originalPrice: '₹719.00' } } },
+    promotions: {
+      upcomingPromotionalOffers: [
+        { promotionalOffers: [{ ...FUTURE_WINDOW, discountSetting: { discountPercentage: 0 } }] },
       ],
     },
     ...over,
@@ -109,13 +129,19 @@ test('buildBundledCheckoutUrl: stacks one offers= param per game', () => {
   assert.equal(url.match(/&offers=/g)?.length, 2);
 });
 
-test('parseFreeGames: maps an active free element with a store URL and checkout URL', () => {
+test('parseFreeGames: maps an active free element with price, store URL and checkout URL', () => {
   const games = parseFreeGames([freeElement()], NOW);
   assert.equal(games.length, 1);
   assert.equal(games[0].title, 'A Free Game');
   assert.equal(games[0].endDate, ACTIVE_WINDOW.endDate);
+  assert.equal(games[0].originalPrice, '₹359.00');
   assert.equal(games[0].storeUrl, 'https://store.epicgames.com/en-US/p/a-free-game');
   assert.ok(games[0].checkoutUrl.includes('&offers=1-ns-1-offer-1'));
+});
+
+test('parseFreeGames: missing price data yields an empty originalPrice', () => {
+  const games = parseFreeGames([freeElement({ price: undefined })], NOW);
+  assert.equal(games[0].originalPrice, '');
 });
 
 test('parseFreeGames: drops elements with no active free offer', () => {
@@ -143,4 +169,36 @@ test('parseFreeGames: de-duplicates the same offer id within one response', () =
 test('parseFreeGames: no store URL when there is no productSlug or catalog alias', () => {
   const games = parseFreeGames([freeElement({ productSlug: null, catalogNs: undefined })], NOW);
   assert.equal(games[0].storeUrl, '');
+});
+
+test('getUpcomingFreeOffer: returns a future 0%-off offer, ignores upcoming discounts', () => {
+  assert.ok(getUpcomingFreeOffer(upcomingElement(), NOW));
+  const discounted = upcomingElement({
+    promotions: {
+      upcomingPromotionalOffers: [
+        { promotionalOffers: [{ ...FUTURE_WINDOW, discountSetting: { discountPercentage: 20 } }] },
+      ],
+    },
+  });
+  assert.equal(getUpcomingFreeOffer(discounted, NOW), null);
+});
+
+test('parseUpcomingGames: maps a future free game with its start date and price', () => {
+  const up = parseUpcomingGames([upcomingElement()], NOW);
+  assert.equal(up.length, 1);
+  assert.equal(up[0].title, 'A Future Free Game');
+  assert.equal(up[0].startDate, FUTURE_WINDOW.startDate);
+  assert.equal(up[0].originalPrice, '₹719.00');
+  assert.equal(up[0].storeUrl, 'https://store.epicgames.com/en-US/p/future-free-game');
+});
+
+test('parseUpcomingGames: keeps "Mystery Game" upcoming teasers (useful info)', () => {
+  const up = parseUpcomingGames([upcomingElement({ title: 'Mystery Game' })], NOW);
+  assert.equal(up.length, 1);
+  assert.equal(up[0].title, 'Mystery Game');
+});
+
+test('parseUpcomingGames: a currently-free game is not also listed as upcoming', () => {
+  // freeElement has only current offers, no upcoming -> excluded here.
+  assert.deepEqual(parseUpcomingGames([freeElement()], NOW), []);
 });
