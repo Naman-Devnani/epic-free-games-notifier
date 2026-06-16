@@ -72,6 +72,10 @@ SMTP_HOST: smtp.your-provider.com
 SMTP_PORT: '465'   # 465 enables TLS, 587 uses STARTTLS
 ```
 
+### Changing the displayed timezone
+
+Expiry times in the email are rendered in `DISPLAY_TZ` (an IANA zone, default `Asia/Kolkata`). To show a different zone, edit the `DISPLAY_TZ` value in the workflow's `env:` block, e.g. `America/New_York` or `UTC`.
+
 ## Manual operations
 
 **Dry run.** Verify the code without sending an email or changing state. Actions tab → "Notify Epic Free Games" → "Run workflow" → set `dry_run` to `true`. Logs will show what *would* have been sent.

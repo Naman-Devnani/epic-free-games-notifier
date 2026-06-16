@@ -28,6 +28,18 @@ function smtpPort(): number {
   return port;
 }
 
+function displayTimeZone(): string {
+  const tz = process.env.DISPLAY_TZ ?? 'Asia/Kolkata';
+  try {
+    // Throws RangeError on an unknown IANA zone - fail now with a clear message
+    // rather than at render time deep inside the email build.
+    new Date().toLocaleString('en-US', { timeZone: tz });
+  } catch {
+    throw new Error(`Invalid DISPLAY_TZ: ${tz} (expected an IANA zone like Asia/Kolkata or UTC)`);
+  }
+  return tz;
+}
+
 async function main(): Promise<void> {
   console.log('Fetching free games from Epic...');
   const games = await getFreeGames();
@@ -62,6 +74,7 @@ async function main(): Promise<void> {
       pass: required('SMTP_PASS'),
       to: required('EMAIL_TO'),
       fromName: process.env.EMAIL_FROM_NAME,
+      displayTimeZone: displayTimeZone(),
     },
     fresh,
   );

@@ -37,6 +37,8 @@ jobs:
       contents: write   # needed to commit state/notified.json
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the state commit can rebase + retry on push
 
       - uses: actions/setup-node@v4
         with:
@@ -53,21 +55,33 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_TO:  ${{ secrets.EMAIL_TO }}
           EMAIL_FROM_NAME: Epic Free Games Bot
+          DISPLAY_TZ: Asia/Kolkata
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: npm start
 
       - name: Commit updated state
         if: ${{ inputs.dry_run != 'true' }}
         run: |
-          if [ -n "$(git status --porcelain state/notified.json 2>/dev/null)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add state/notified.json
-            git commit -m "chore: update notified games state [skip ci]"
-            git push
-          else
+          if [ -z "$(git status --porcelain state/notified.json 2>/dev/null)" ]; then
             echo "No state changes to commit"
+            exit 0
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/notified.json
+          git commit -m "chore: update notified games state [skip ci]"
+          # Retry: if something else pushed to main between checkout and now, rebase
+          # our single state commit on top and push again rather than failing the run
+          # (a failed push would skip the state save and re-send a duplicate email).
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt) - rebasing onto latest main and retrying"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+          done
+          echo "Could not push state after 3 attempts"
+          exit 1
 
       - name: Email me if the job failed
         if: failure()

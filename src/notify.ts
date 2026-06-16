@@ -9,10 +9,14 @@ export interface EmailConfig {
   pass: string;
   to: string;
   fromName?: string;
+  /** IANA timezone for rendering expiry times in the email. */
+  displayTimeZone: string;
 }
 
 // Gmail truncates the inbox preview around 70 chars. Leave headroom for the prefix.
 const MAX_SUBJECT_TITLES_LENGTH = 55;
+
+const MAX_SEND_ATTEMPTS = 3;
 
 export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise<void> {
   const transport = nodemailer.createTransport({
@@ -22,13 +26,36 @@ export async function sendEmail(config: EmailConfig, games: FreeGame[]): Promise
     auth: { user: config.user, pass: config.pass },
   });
 
-  await transport.sendMail({
+  const message = {
     from: `"${config.fromName ?? 'Epic Free Games Bot'}" <${config.user}>`,
     to: config.to,
     subject: buildSubject(games),
-    html: renderHtml(games),
-    text: renderText(games),
-  });
+    html: renderHtml(games, config.displayTimeZone),
+    text: renderText(games, config.displayTimeZone),
+  };
+
+  // Retry transient SMTP failures so one Gmail hiccup doesn't drop the whole
+  // notification (the failure email shares these creds, so a silent drop here
+  // would otherwise mean missing the free games entirely).
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt += 1) {
+    try {
+      await transport.sendMail(message);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_SEND_ATTEMPTS) {
+        const delayMs = 1000 * attempt;
+        console.warn(
+          `Email send attempt ${attempt}/${MAX_SEND_ATTEMPTS} failed: ${(err as Error).message}. Retrying in ${delayMs}ms`,
+        );
+        await new Promise((r) => {
+          setTimeout(r, delayMs);
+        });
+      }
+    }
+  }
+  throw lastErr;
 }
 
 /** Exported for tests. */
@@ -44,7 +71,24 @@ export function buildSubject(games: FreeGame[]): string {
   return extra > 0 ? `Free on Epic: ${first} + ${extra} more` : `Free on Epic: ${first}`;
 }
 
-function renderHtml(games: FreeGame[]): string {
+/**
+ * Format an offer's expiry in the configured timezone, with the zone's
+ * abbreviation appended (e.g. "Jun 20, 2026, 5:30 AM GMT+5:30") so the reader
+ * never has to do UTC math. Exported for tests.
+ */
+export function formatExpiry(endDate: string, timeZone: string): string {
+  return new Date(endDate).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone,
+    timeZoneName: 'short',
+  });
+}
+
+function renderHtml(games: FreeGame[], timeZone: string): string {
   // One link that claims every game at once. Epic's checkout overlay confusingly
   // shows only one of the games, but clicking "Add to library" claims all the
   // offers in the URL - so the banner says so up front to avoid alarm.
@@ -57,11 +101,7 @@ function renderHtml(games: FreeGame[]): string {
     : '';
   const cards = games
     .map((g) => {
-      const endsOn = new Date(g.endDate).toLocaleString('en-US', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        timeZone: 'UTC',
-      });
+      const endsOn = formatExpiry(g.endDate, timeZone);
       const img = g.imageUrl
         ? `<img src="${escapeHtml(g.imageUrl)}" alt="${escapeHtml(g.title)}" style="width:100%;max-width:600px;border-radius:6px;display:block;margin-bottom:12px"/>`
         : '';
@@ -70,7 +110,7 @@ function renderHtml(games: FreeGame[]): string {
           ${img}
           <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f1923">${escapeHtml(g.title)}</h2>
           <p style="margin:0 0 10px 0;color:#5d6166;font-size:14px;line-height:1.5">${escapeHtml(g.description)}</p>
-          <p style="margin:0 0 14px 0;color:#8a8f95;font-size:12px">Free until ${endsOn} UTC</p>
+          <p style="margin:0 0 14px 0;color:#8a8f95;font-size:12px">Free until ${endsOn}</p>
           <a href="${escapeHtml(g.checkoutUrl)}" style="display:inline-block;padding:11px 22px;background:#0078f2;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px">Claim now</a>
           ${g.storeUrl ? ` &nbsp; <a href="${escapeHtml(g.storeUrl)}" style="color:#5d6166;font-size:13px;text-decoration:none">Store page &rarr;</a>` : ''}
         </div>`;
@@ -90,12 +130,12 @@ function renderHtml(games: FreeGame[]): string {
 </body></html>`;
 }
 
-function renderText(games: FreeGame[]): string {
+function renderText(games: FreeGame[], timeZone: string): string {
   const bundled = games.length > 1
     ? `Claim all ${games.length} in one click (Epic may show only one game, but clicking "Add to library" claims all ${games.length}):\n${buildBundledCheckoutUrl(games)}\n\n---\n\n`
     : '';
   const perGame = games
-    .map((g) => `${g.title}\n${g.description}\nFree until ${g.endDate}\nClaim: ${g.checkoutUrl}`)
+    .map((g) => `${g.title}\n${g.description}\nFree until ${formatExpiry(g.endDate, timeZone)}\nClaim: ${g.checkoutUrl}`)
     .join('\n\n---\n\n');
   return bundled + perGame;
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSubject } from './notify.ts';
+import { buildSubject, formatExpiry } from './notify.ts';
 import type { FreeGame } from './epic.ts';
 
 function game(title: string): FreeGame {
@@ -36,4 +36,16 @@ test('buildSubject: long combined titles fall back to "first + N more"', () => {
 test('buildSubject: one very long single title has no "+ more" suffix', () => {
   const long = 'A Single Extremely Long Game Title That Goes On Well Past Fifty-Five Chars';
   assert.equal(buildSubject([game(long)]), `Free on Epic: ${long}`);
+});
+
+test('formatExpiry: renders the date in the given timezone, no stale "UTC" label', () => {
+  const utc = formatExpiry('2026-06-20T00:00:00Z', 'UTC');
+  assert.ok(utc.includes('Jun 20, 2026'));
+  assert.ok(utc.includes('UTC'));
+
+  // Asia/Kolkata is UTC+5:30, so the same instant is 5:30 AM and carries the
+  // +5:30 offset in its label (not "UTC").
+  const ist = formatExpiry('2026-06-20T00:00:00Z', 'Asia/Kolkata');
+  assert.ok(ist.includes('5:30'));
+  assert.ok(!ist.includes('UTC'));
 });
