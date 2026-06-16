@@ -8,7 +8,7 @@ The email contains a pre-filled "Claim now" button for each game and, when there
 
 ## How it works
 
-1. **Cron** triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** (05:30 UTC). Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails.
+1. **An external scheduler (cron-job.org)** triggers the workflow **Friday, Saturday and Sunday at 11:00 AM IST** by POSTing a `repository_dispatch` event — this fires on time, to the second (see [Precise scheduling](#precise-scheduling)). GitHub's own `schedule` cron (~11:17 AM IST) is kept as a free backup in case the external scheduler ever misses, but it is best-effort and often delayed 1-3 hours. Epic's weekly free games drop Thursday 10:30 PM IST; Friday's run catches them, Sat/Sun are backups in case Friday fails.
 2. The job hits Epic's public `freeGamesPromotions` API, the same endpoint Epic's homepage uses. No auth, no browser, no login. Fetches have a 10 s timeout and retry up to 3 times on transient errors (4xx and parse errors fail fast).
 3. Game IDs are diffed against `state/notified.json` (committed to the repo) so the same email never goes out twice.
 4. If anything is new, one HTML email is sent. Each game gets its own card (artwork, description, expiry, "Claim now" button) and a "Claim all N" banner appears at the top when 2+ games are bundled.
@@ -28,6 +28,38 @@ Add three repository secrets (Settings → Secrets and variables → Actions):
 | `EMAIL_TO` | Where to send the notification (can match `SMTP_USER`) |
 
 Then either wait for the next scheduled run or trigger it manually from the Actions tab.
+
+## Precise scheduling
+
+GitHub's `schedule` cron is best-effort: scheduled runs are deprioritized and routinely fire 1-3 hours late. For on-time delivery, a free external scheduler pings GitHub's API at the exact minute, which fires the `repository_dispatch` trigger — those events run within seconds.
+
+**1. Create a GitHub token** (fine-grained, minimal scope):
+
+- GitHub → Settings → Developer settings → **Fine-grained personal access tokens** → Generate new token.
+- Repository access: **Only select repositories** → this repo.
+- Permissions: **Contents → Read and write** (this is what authorizes `repository_dispatch`).
+- Expiration: set a reminder to rotate it before it lapses (or use "No expiration" if you accept the risk).
+- Copy the token (starts with `github_pat_`).
+
+**2. Create the cron job at [cron-job.org](https://cron-job.org)** (free, no card, 1-minute resolution):
+
+- Sign up, then **Create cronjob**.
+- **URL:** `https://api.github.com/repos/Naman-Devnani/epic-free-games-notifier/dispatches`
+- **Schedule:** custom → Friday, Saturday, Sunday at **11:00**. Set the account timezone to **Asia/Kolkata** (Settings → Timezone) so 11:00 means 11:00 IST.
+- **Request method:** `POST`
+- **Headers** (Advanced → Headers):
+  | Key | Value |
+  |---|---|
+  | `Accept` | `application/vnd.github+json` |
+  | `Authorization` | `Bearer github_pat_…your token…` |
+  | `X-GitHub-Api-Version` | `2022-11-28` |
+  | `User-Agent` | `epic-free-games-cron` |
+- **Request body:** `{"event_type":"run-notify"}`
+- Save. Use cron-job.org's **"Run now"** / "Test run" to confirm you get HTTP `204` back and a run appears in the Actions tab.
+
+The workflow listens for `repository_dispatch` of type `run-notify`, so the body's `event_type` must match exactly.
+
+> **Why a backup cron too?** The workflow keeps GitHub's `schedule` trigger (~11:17 AM IST) so that if cron-job.org is ever down or the token expires, you still get a (late) email instead of silence. The dedup state file means the backup run is a harmless no-op when the on-time run already sent.
 
 ### Using a non-Gmail SMTP server
 
