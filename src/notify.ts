@@ -1,5 +1,4 @@
 import nodemailer from 'nodemailer';
-import { buildBundledCheckoutUrl } from './epic.ts';
 import type { FreeGame } from './epic.ts';
 
 export interface EmailConfig {
@@ -44,11 +43,13 @@ function buildSubject(games: FreeGame[]): string {
 }
 
 function renderHtml(games: FreeGame[]): string {
-  const claimAllBanner = games.length > 1
-    ? `<div style="margin:0 0 24px 0;padding:16px;background:#0078f2;border-radius:10px;text-align:center">
-         <p style="margin:0 0 10px 0;color:#fff;font-size:14px">Claim every game above in one go:</p>
-         <a href="${escapeHtml(buildBundledCheckoutUrl(games))}" style="display:inline-block;padding:11px 24px;background:#fff;color:#0078f2;text-decoration:none;border-radius:6px;font-weight:700;font-size:14px">Claim all ${games.length}</a>
-       </div>`
+  // Epic's free-game checkout is one item at a time - there's no URL or cart
+  // that claims several at once - so when there are multiple games we just tell
+  // the reader to claim each card below rather than promising a bogus "claim all".
+  const multiNote = games.length > 1
+    ? `<p style="margin:0 0 20px 0;padding:12px 16px;background:#eef3fb;border-radius:10px;color:#33414f;font-size:14px;text-align:center">
+         ${games.length} free games this week - claim each one below (Epic adds them to your library individually).
+       </p>`
     : '';
   const cards = games
     .map((g) => {
@@ -76,23 +77,23 @@ function renderHtml(games: FreeGame[]): string {
 <html><body style="margin:0;padding:24px;background:#f6f7f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <div style="max-width:640px;margin:0 auto">
   <h1 style="margin:0 0 20px 0;font-size:24px;color:#0f1923">This week's free games</h1>
-  ${claimAllBanner}
+  ${multiNote}
   ${cards}
   <p style="margin-top:24px;color:#8a8f95;font-size:12px;text-align:center">
-    Sent automatically. Click "Claim now" then press "Place Order" on Epic - the games are free.
+    Sent automatically. Click "Claim now" then press "Add to library" on Epic - the games are free.
   </p>
 </div>
 </body></html>`;
 }
 
 function renderText(games: FreeGame[]): string {
-  const bundled = games.length > 1
-    ? `Claim all ${games.length} in one go: ${buildBundledCheckoutUrl(games)}\n\n---\n\n`
+  const header = games.length > 1
+    ? `${games.length} free games this week - claim each one below (Epic adds them individually).\n\n---\n\n`
     : '';
   const perGame = games
     .map((g) => `${g.title}\n${g.description}\nFree until ${g.endDate}\nClaim: ${g.checkoutUrl}`)
     .join('\n\n---\n\n');
-  return bundled + perGame;
+  return header + perGame;
 }
 
 function escapeHtml(s: string): string {

@@ -154,20 +154,17 @@ function buildCheckoutUrl(offerId: string, namespace: string): string {
   return buildPurchaseUrl(`&offers=1-${namespace}-${offerId}`);
 }
 
-/** Build one checkout URL that pre-fills *all* offers, so a single "Place Order" claims them at once. */
-export function buildBundledCheckoutUrl(
-  offers: Array<{ id: string; namespace: string }>,
-): string {
-  const params = offers.map((o) => `&offers=1-${o.namespace}-${o.id}`).join('');
-  return buildPurchaseUrl(params);
-}
-
 /**
- * Link straight to Epic's purchase page with the offers pre-filled, so a
+ * Link straight to Epic's purchase page with the offer pre-filled, so a
  * signed-in recipient (the normal case when clicking from their own inbox)
- * lands directly on checkout - one "Place Order" claims everything.
+ * lands directly on the "Add to library" checkout for that game.
  *
- * We deliberately do NOT wrap this in Epic's /id/login flow. Passing a
+ * One offer per URL on purpose. Epic's free-game checkout is a single-item
+ * "This is free. Add it to your library" overlay - it ignores all but one
+ * `offers=` param and has no cart, so multiple free games genuinely cannot be
+ * claimed in one click. Each game gets its own button in the email.
+ *
+ * We also deliberately do NOT wrap this in Epic's /id/login flow. Passing a
  * client_id turns it into an OAuth handshake that bounces an already-logged-in
  * user to a "switch account" chooser before checkout. The tradeoff: a user who
  * is signed out when they click gets Epic's "Account id is missing" page and
