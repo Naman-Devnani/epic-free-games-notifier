@@ -140,10 +140,15 @@ function isPlaceholderTitle(title: string | undefined): boolean {
 function storeUrlFor(el: RawElement): string {
   // urlSlug is an internal identifier that often 404s, so we only build a link
   // from productSlug or its catalogNs productHome alias.
-  const slug =
+  const raw =
     el.productSlug ||
     el.catalogNs?.mappings?.find((m) => m.pageType === 'productHome')?.pageSlug ||
     '';
+  // Epic's productSlug frequently carries a trailing "/home" (e.g.
+  // "thems-fightin-herds/home"). Left in, store.epicgames.com/p/{slug}/home
+  // redirects to the www.epicgames.com/site/... marketing page, which 404s.
+  // Keep only the base slug segment so the link resolves to the store page.
+  const slug = raw.split('/')[0];
   return slug ? `https://store.epicgames.com/en-US/p/${slug}` : '';
 }
 

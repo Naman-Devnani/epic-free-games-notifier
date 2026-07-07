@@ -172,6 +172,13 @@ test('parseFreeGames: no store URL when there is no productSlug or catalog alias
   assert.equal(games[0].storeUrl, '');
 });
 
+test('parseFreeGames: strips a trailing "/home" from productSlug (Epic quirk)', () => {
+  // Epic hands back slugs like "thems-fightin-herds/home"; the /home path 404s
+  // on the store, so the store URL must use only the base slug.
+  const games = parseFreeGames([freeElement({ productSlug: 'thems-fightin-herds/home' })], NOW);
+  assert.equal(games[0].storeUrl, 'https://store.epicgames.com/en-US/p/thems-fightin-herds');
+});
+
 test('getUpcomingFreeOffer: returns a future 0%-off offer, ignores upcoming discounts', () => {
   assert.ok(getUpcomingFreeOffer(upcomingElement(), NOW));
   const discounted = upcomingElement({
